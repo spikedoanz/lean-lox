@@ -14,7 +14,7 @@ partial def scanChars (chars : List Char) (line : Nat) (acc : List Token) : List
   | '+' :: rest => scanChars rest line ({ type := .PLUS, lexeme := "+", literal := none, line := line } :: acc)
   | ';' :: rest => scanChars rest line ({ type := .SEMICOLON, lexeme := ";", literal := none, line := line } :: acc)
   | '*' :: rest => scanChars rest line ({ type := .STAR, lexeme := "*", literal := none, line := line } :: acc)
-  -- Single-line comment: skip until newline
+  -- Single-line comment: skip until \n  
   | '/' :: '/' :: rest => 
     let rec skipToNewline (chars : List Char) : List Char :=
       match chars with
@@ -22,6 +22,14 @@ partial def scanChars (chars : List Char) (line : Nat) (acc : List Token) : List
       | '\n' :: rest => '\n' :: rest  -- Keep the newline to process it normally
       | _ :: rest => skipToNewline rest
     scanChars (skipToNewline rest) line acc
+  -- Multi line comment: skip until */
+  | '/' :: '*' :: rest =>
+    let rec skipToCommentClose (chars : List Char) : List Char :=
+      match chars with
+      | [] => []
+      | '*' :: '/' :: rest => rest
+      | _ :: rest => skipToCommentClose rest
+    scanChars (skipToCommentClose rest) line acc
   | '/' :: rest => scanChars rest line ({ type := .SLASH, lexeme := "/", literal := none, line := line } :: acc)
   | '!' :: '=' :: rest => scanChars rest line ({ type := .BANG_EQUAL, lexeme := "!=", literal := none, line := line } :: acc)
   | '!' :: rest => scanChars rest line ({ type := .BANG, lexeme := "!", literal := none, line := line } :: acc)

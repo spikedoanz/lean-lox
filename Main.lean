@@ -24,12 +24,14 @@ partial def scanChars (chars : List Char) (line : Nat) (acc : List Token) : List
     scanChars (skipToNewline rest) line acc
   -- Multi line comment: skip until */
   | '/' :: '*' :: rest =>
-    let rec skipToCommentClose (chars : List Char) : List Char :=
+    let rec skipToCommentClose (chars : List Char) (currentLine : Nat) : (List Char × Nat) :=
       match chars with
-      | [] => []
-      | '*' :: '/' :: rest => rest
-      | _ :: rest => skipToCommentClose rest
-    scanChars (skipToCommentClose rest) line acc
+      | [] => ([], currentLine)
+      | '*' :: '/' :: rest => (rest, currentLine)
+      | '\n' :: rest => skipToCommentClose rest (currentLine + 1) -- accurate line tracking
+      | _ :: rest => skipToCommentClose rest currentLine
+    let (remaining, newLine) := skipToCommentClose rest line
+    scanChars remaining newLine acc
   | '/' :: rest => scanChars rest line ({ type := .SLASH, lexeme := "/", literal := none, line := line } :: acc)
   | '!' :: '=' :: rest => scanChars rest line ({ type := .BANG_EQUAL, lexeme := "!=", literal := none, line := line } :: acc)
   | '!' :: rest => scanChars rest line ({ type := .BANG, lexeme := "!", literal := none, line := line } :: acc)

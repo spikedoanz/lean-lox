@@ -99,5 +99,5 @@ def makeToken (type : TokenType) (lexeme : String) (literal : Option String) (li
 
 def Token.toString (token : Token) : String :=
   match token.literal with
-  | some lit => s!"{token.type} {token.lexeme} L{token.line} {lit}"
-  | none =>     s!"{token.type} {token.lexeme} L{token.line}"
+  | some lit => s!"{token.type} \t L{token.line} \t {token.lexeme} {lit}"
+  | none =>     s!"{token.type} \t L{token.line} \t {token.lexeme} "

@@ -1,31 +1,39 @@
 import LeanLox.Token
 open Token
 
-def scanChars (chars : List Char) (line : Nat) (acc : List Token) : List Token :=
+partial def scanChars (chars : List Char) (line : Nat) (acc : List Token) : List Token :=
   match chars with
   | [] => (acc.reverse).append [{ type := .EOF, lexeme := "", literal := none, line := line }]
-  | '(' :: rest =>        scanChars rest line ({ type := .LEFT_PAREN,     lexeme := "(",  literal := none, line := line } :: acc)
-  | ')' :: rest =>        scanChars rest line ({ type := .RIGHT_PAREN,    lexeme := ")",  literal := none, line := line } :: acc)
-  | '{' :: rest =>        scanChars rest line ({ type := .LEFT_BRACE,     lexeme := "{",  literal := none, line := line } :: acc)
-  | '}' :: rest =>        scanChars rest line ({ type := .RIGHT_BRACE,    lexeme := "}",  literal := none, line := line } :: acc)
-  | ',' :: rest =>        scanChars rest line ({ type := .COMMA,          lexeme := ",",  literal := none, line := line } :: acc)
-  | '.' :: rest =>        scanChars rest line ({ type := .DOT,            lexeme := ".",  literal := none, line := line } :: acc)
-  | '-' :: rest =>        scanChars rest line ({ type := .MINUS,          lexeme := "-",  literal := none, line := line } :: acc)
-  | '+' :: rest =>        scanChars rest line ({ type := .PLUS,           lexeme := "+",  literal := none, line := line } :: acc)
-  | ';' :: rest =>        scanChars rest line ({ type := .SEMICOLON,      lexeme := ";",  literal := none, line := line } :: acc)
-  | '*' :: rest =>        scanChars rest line ({ type := .STAR,           lexeme := "*",  literal := none, line := line } :: acc)
-  | '/' :: rest =>        scanChars rest line ({ type := .SLASH,          lexeme := "/",  literal := none, line := line } :: acc)
-  | '!' :: '=' :: rest => scanChars rest line ({ type := .BANG_EQUAL,     lexeme := "!=", literal := none, line := line } :: acc)
-  | '!' :: rest =>        scanChars rest line ({ type := .BANG,           lexeme := "!",  literal := none, line := line } :: acc)
-  | '=' :: '=' :: rest => scanChars rest line ({ type := .EQUAL_EQUAL,    lexeme := "==", literal := none, line := line } :: acc)
-  | '=' :: rest =>        scanChars rest line ({ type := .EQUAL,          lexeme := "=",  literal := none, line := line } :: acc)
-  | '>' :: '=' :: rest => scanChars rest line ({ type := .GREATER_EQUAL,  lexeme := ">=", literal := none, line := line } :: acc)
-  | '>' :: rest =>        scanChars rest line ({ type := .GREATER,        lexeme := ">",  literal := none, line := line } :: acc)
-  | '<' :: '=' :: rest => scanChars rest line ({ type := .LESS_EQUAL,     lexeme := "<=", literal := none, line := line } :: acc)
-  | '<' :: rest =>        scanChars rest line ({ type := .LESS,           lexeme := "<",  literal := none, line := line } :: acc)
-  | '\n' :: rest       => scanChars rest (line + 1) acc
-  | ' ' :: rest | '\t' :: rest | '\r' :: rest   => scanChars rest line acc
-  | _ :: rest          => scanChars rest line acc -- skip unknown chars
+  | '(' :: rest => scanChars rest line ({ type := .LEFT_PAREN, lexeme := "(", literal := none, line := line } :: acc)
+  | ')' :: rest => scanChars rest line ({ type := .RIGHT_PAREN, lexeme := ")", literal := none, line := line } :: acc)
+  | '{' :: rest => scanChars rest line ({ type := .LEFT_BRACE, lexeme := "{", literal := none, line := line } :: acc)
+  | '}' :: rest => scanChars rest line ({ type := .RIGHT_BRACE, lexeme := "}", literal := none, line := line } :: acc)
+  | ',' :: rest => scanChars rest line ({ type := .COMMA, lexeme := ",", literal := none, line := line } :: acc)
+  | '.' :: rest => scanChars rest line ({ type := .DOT, lexeme := ".", literal := none, line := line } :: acc)
+  | '-' :: rest => scanChars rest line ({ type := .MINUS, lexeme := "-", literal := none, line := line } :: acc)
+  | '+' :: rest => scanChars rest line ({ type := .PLUS, lexeme := "+", literal := none, line := line } :: acc)
+  | ';' :: rest => scanChars rest line ({ type := .SEMICOLON, lexeme := ";", literal := none, line := line } :: acc)
+  | '*' :: rest => scanChars rest line ({ type := .STAR, lexeme := "*", literal := none, line := line } :: acc)
+  -- Single-line comment: skip until newline
+  | '/' :: '/' :: rest => 
+    let rec skipToNewline (chars : List Char) : List Char :=
+      match chars with
+      | [] => []
+      | '\n' :: rest => '\n' :: rest  -- Keep the newline to process it normally
+      | _ :: rest => skipToNewline rest
+    scanChars (skipToNewline rest) line acc
+  | '/' :: rest => scanChars rest line ({ type := .SLASH, lexeme := "/", literal := none, line := line } :: acc)
+  | '!' :: '=' :: rest => scanChars rest line ({ type := .BANG_EQUAL, lexeme := "!=", literal := none, line := line } :: acc)
+  | '!' :: rest => scanChars rest line ({ type := .BANG, lexeme := "!", literal := none, line := line } :: acc)
+  | '=' :: '=' :: rest => scanChars rest line ({ type := .EQUAL_EQUAL, lexeme := "==", literal := none, line := line } :: acc)
+  | '=' :: rest => scanChars rest line ({ type := .EQUAL, lexeme := "=", literal := none, line := line } :: acc)
+  | '>' :: '=' :: rest => scanChars rest line ({ type := .GREATER_EQUAL, lexeme := ">=", literal := none, line := line } :: acc)
+  | '>' :: rest => scanChars rest line ({ type := .GREATER, lexeme := ">", literal := none, line := line } :: acc)
+  | '<' :: '=' :: rest => scanChars rest line ({ type := .LESS_EQUAL, lexeme := "<=", literal := none, line := line } :: acc)
+  | '<' :: rest => scanChars rest line ({ type := .LESS, lexeme := "<", literal := none, line := line } :: acc)
+  | '\n' :: rest => scanChars rest (line + 1) acc
+  | ' ' :: rest | '\t' :: rest | '\r' :: rest => scanChars rest line acc
+  | _ :: rest => scanChars rest line acc -- skip unknown chars for now
 
 def scanTokens (source : String) : List Token :=
   scanChars source.toList 1 []

@@ -1,0 +1,10 @@
+name = "lean-lox"
+version = "0.1.0"
+defaultTargets = ["lean-lox"]
+
+[[lean_lib]]
+name = "LeanLox"
+
+[[lean_exe]]
+name = "lean-lox"
+root = "Main"

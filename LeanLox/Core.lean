@@ -1,12 +1,7 @@
-import LeanLox.Token
 import LeanLox.Scanner
+import LeanLox.Parser
 
-inductive Expr where
-  | Binary   : Expr → Token → Expr → Expr
-  | Grouping : Expr → Expr
-  | Literal  : Option String → Expr
-  | Unary    : Token → Expr → Expr
-  deriving Repr
+open LeanLox.Parser
 
 def astPrint : Expr → String
   | Expr.Binary left op right => 
@@ -18,10 +13,14 @@ def astPrint : Expr → String
   | Expr.Unary op right => 
       s!"({op.lexeme} {astPrint right})"
 
+
 def run (source : String) : IO Unit := do
   let tokens := scanTokens source
-  for token in tokens do
-    IO.println (Token.toString token)
+  match parse tokens with
+  | Except.ok expr => 
+      IO.println (astPrint expr)
+  | Except.error msg => 
+      IO.eprintln s!"Parse error: {msg}"
 
 partial def runPrompt : IO UInt32 := do
   IO.println "Lox REPL (type 'exit' to quit)"

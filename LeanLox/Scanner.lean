@@ -1,5 +1,4 @@
 import LeanLox.Token
-open Token
 
 partial def scanChars (chars : List Char) (line : Nat) (acc : List Token) : List Token :=
   match chars with

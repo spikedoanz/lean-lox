@@ -92,7 +92,7 @@ structure Token where
   lexeme : String
   literal : Option String
   line : Nat
-  deriving Repr, BEq
+  deriving Repr, BEq, Inhabited
 
 def makeToken (type : TokenType) (lexeme : String) (literal : Option String) (line : Nat) : Token :=
   { type := type, lexeme := lexeme, literal := literal, line := line }

@@ -1,17 +1,27 @@
-import LeanLox.Scanner
 import LeanLox.Parser
+import LeanLox.Scanner
+import LeanLox.Interpreter
 
 open LeanLox.Parser
+open LeanLox.Interpreter
 
-def astPrint : Expr → String
+def indent (depth : Nat) : String :=
+  String.join (List.replicate depth "  ")
+
+def tPrint (depth : Nat) : Expr → String
   | Expr.Binary left op right => 
-      s!"({op.lexeme} \n  {astPrint left} \n  {astPrint right}\n)"
+      let _ := indent depth
+      let nextInd := indent (depth + 1)
+      s!"({op.lexeme}\n{nextInd}{tPrint (depth + 1) left}\n{nextInd}{tPrint (depth + 1) right})"
   | Expr.Grouping expr => 
-      s!"(group {astPrint expr})"
+      s!"(group {tPrint depth expr})"
   | Expr.Literal (some value) => value
   | Expr.Literal none => "nil"
   | Expr.Unary op right => 
-      s!"({op.lexeme} {astPrint right})"
+      s!"({op.lexeme} {tPrint depth right})"
+
+def astPrint (expr : Expr) : String :=
+  "==AST==\n" ++ (tPrint 0 expr) ++ "\n======="
 
 
 def run (source : String) : IO Unit := do
@@ -19,6 +29,9 @@ def run (source : String) : IO Unit := do
   match parse tokens with
   | Except.ok expr => 
       IO.println (astPrint expr)
+      match evaluate expr with
+      | .ok v => IO.println v
+      | .error err => IO.println s!"Runtime error! {err}"
   | Except.error msg => 
       IO.eprintln s!"Parse error: {msg}"
 

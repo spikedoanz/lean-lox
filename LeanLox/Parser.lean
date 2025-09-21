@@ -1,5 +1,4 @@
 import LeanLox.Token
-
 namespace LeanLox.Parser
 
 inductive Expr where
@@ -119,6 +118,7 @@ mutual
       throw s!"Unexpected token '{t.lexeme}' at line {t.line}"
 end
 
+-- Main parse function
 def parse (tokens : List Token) : Except String Expr :=
   let initialState : ParserState := { tokens := tokens, current := 0 }
   match StateT.run expression initialState with

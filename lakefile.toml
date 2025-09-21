@@ -2,6 +2,11 @@ name = "lean-lox"
 version = "0.1.0"
 defaultTargets = ["lean-lox"]
 
+[[require]]
+name = "batteries"
+scope = "leanprover-community"
+rev = "main"
+
 [[lean_lib]]
 name = "LeanLox"
 

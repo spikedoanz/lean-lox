@@ -1,8 +1,10 @@
+import Batteries.Lean.HashMap
 import LeanLox.Parser
-
-open String
 open LeanLox.Parser
+
 namespace LeanLox.Interpreter
+
+def MAX_VALUES := 10000
 
 inductive RuntimeError where
   | typeError       : String → RuntimeError
@@ -31,6 +33,41 @@ instance : ToString Value where
     | Value.boolean b => toString b
     | Value.number n => toString n
     | Value.string s => s
+
+structure Environment where
+  values : Std.HashMap String Value
+  enclosing : Option Environment
+  deriving Repr, Inhabited
+
+def Environment.empty : Environment :=
+  { values := Std.HashMap.emptyWithCapacity MAX_VALUES,
+    enclosing := none }
+
+def Environment.withEnclosing (parent : Environment) : Environment :=
+  { values := Std.HashMap.emptyWithCapacity MAX_VALUES,
+    enclosing := some parent }
+
+def Environment.define (env : Environment) (name: String) (value: Value) : Environment :=
+  { env with values := env.values.insert name value }
+
+partial def Environment.get (env : Environment) (name: String) : Except RuntimeError Value :=
+  match env.values.get? name with
+  | some v => pure v
+  | none => 
+    match env.enclosing with
+    | some parent => parent.get name
+    | none => .error (RuntimeError.unknownVariable name)
+
+partial def Environment.assign (env : Environment) (name: String) (value: Value) 
+    : Except RuntimeError Environment :=
+  if env.values.contains name then
+    .ok { env with values := env.values.insert name value }
+  else
+    match env.enclosing with
+    | some parent => do
+      let newParent ← parent.assign name value
+      .ok { env with enclosing := some newParent }
+    | none => .error (RuntimeError.unknownVariable name)
 
 def parseNumber (s : String) : Option Float :=
   let chars := s.toList
@@ -87,74 +124,174 @@ def expectString (v : Value) : Except RuntimeError String :=
   | Value.string s => .ok s
   | _ => .error (RuntimeError.typeError s!"Expected string, got {v}")
 
-def evaluate (expr: Expr) : Except RuntimeError Value :=
-  match expr with
-  | Expr.Literal lit => 
-    .ok (Value.fromLiteral lit)
-    
-  | Expr.Grouping e => 
-    evaluate e
-    
-  | Expr.Unary op right => do
-    let rValue ← evaluate right
-    match op.type with
-    | TokenType.MINUS => do
-      let n ← expectNumber rValue
-      .ok (Value.number (-n))
-    | TokenType.BANG => 
-      .ok (Value.boolean (not (Value.isTruthy rValue)))
-    | _ => 
-      .error (
-      RuntimeError.unknownOperator s!"Unknown unary operator: {op.type}")
-    
-  | Expr.Binary left op right => do
-    let lValue ← evaluate left
-    let rValue ← evaluate right
-    match op.type with
-    | TokenType.MINUS => do
-      let l ← expectNumber lValue
-      let r ← expectNumber rValue
-      .ok (Value.number (l - r))
-    | TokenType.PLUS =>
-      -- Handle both number addition and string concatenation
-      match lValue, rValue with
-      | Value.number l, Value.number r => .ok (Value.number (l + r))
-      | Value.string l, Value.string r => .ok (Value.string (l ++ r))
-      | Value.string l, Value.number r => .ok (Value.string (l ++ r.toString))
-      | _, _ => .error (RuntimeError.typeError 
-          s!"Cannot add {lValue} and {rValue}")
-    | TokenType.STAR => do
-      let l ← expectNumber lValue
-      let r ← expectNumber rValue
-      .ok (Value.number (l * r))
-    | TokenType.SLASH => do
-      let l ← expectNumber lValue
-      let r ← expectNumber rValue
-      if r == 0 then
-        .error RuntimeError.divisionByZero
-      else
-        .ok (Value.number (l / r))
-    | TokenType.GREATER => do
-      let l ← expectNumber lValue
-      let r ← expectNumber rValue
-      .ok (Value.boolean (l > r))
-    | TokenType.GREATER_EQUAL => do
-      let l ← expectNumber lValue
-      let r ← expectNumber rValue
-      .ok (Value.boolean (l >= r))
-    | TokenType.LESS => do
-      let l ← expectNumber lValue
-      let r ← expectNumber rValue
-      .ok (Value.boolean (l < r))
-    | TokenType.LESS_EQUAL => do
-      let l ← expectNumber lValue
-      let r ← expectNumber rValue
-      .ok (Value.boolean (l <= r))
-    | TokenType.EQUAL_EQUAL =>
-      .ok (Value.boolean (lValue == rValue))
-    | TokenType.BANG_EQUAL =>
-      .ok (Value.boolean (lValue != rValue))
-    | _ => 
-      .error (RuntimeError.unknownOperator s!"Unknown binary operator: {op.type}")
+-- State for the interpreter
+structure InterpreterState where
+  env : Environment
+  output : List String  -- To collect print output
+  deriving Repr, Inhabited
+
+abbrev InterpreterM := StateT InterpreterState (Except RuntimeError)
+
+-- Forward declaration for mutual recursion
+mutual
+
+  partial def evaluateExpr (expr: Expr) : InterpreterM Value := do
+    let state ← get
+    match expr with
+    | Expr.Literal lit => 
+      pure (Value.fromLiteral lit)
+      
+    | Expr.Grouping e => 
+      evaluateExpr e
+      
+    | Expr.Var name =>
+      match state.env.get name.lexeme with
+      | .ok v => pure v
+      | .error e => throw e
+      
+    | Expr.Assign name value => do
+      let v ← evaluateExpr value
+      let state ← get
+      match state.env.assign name.lexeme v with
+      | .ok newEnv => do
+        set { state with env := newEnv }
+        pure v
+      | .error e => throw e
+      
+    | Expr.Unary op right => do
+      let rValue ← evaluateExpr right
+      match op.type with
+      | TokenType.MINUS => do
+        match expectNumber rValue with
+        | .ok n => pure (Value.number (-n))
+        | .error e => throw e
+      | TokenType.BANG => 
+        pure (Value.boolean (not (Value.isTruthy rValue)))
+      | _ => 
+        throw (RuntimeError.unknownOperator s!"Unknown unary operator: {op.type}")
+      
+    | Expr.Binary left op right => do
+      let lValue ← evaluateExpr left
+      let rValue ← evaluateExpr right
+      match op.type with
+      | TokenType.MINUS => do
+        match expectNumber lValue, expectNumber rValue with
+        | .ok l, .ok r => pure (Value.number (l - r))
+        | .error e, _ => throw e
+        | _, .error e => throw e
+      | TokenType.PLUS =>
+        -- Handle both number addition and string concatenation
+        match lValue, rValue with
+        | Value.number l, Value.number r => pure (Value.number (l + r))
+        | Value.string l, Value.string r => pure (Value.string (l ++ r))
+        | Value.string l, Value.number r => pure (Value.string (l ++ r.toString))
+        | _, _ => throw (RuntimeError.typeError 
+            s!"Cannot add {lValue} and {rValue}")
+      | TokenType.STAR => do
+        match expectNumber lValue, expectNumber rValue with
+        | .ok l, .ok r => pure (Value.number (l * r))
+        | .error e, _ => throw e
+        | _, .error e => throw e
+      | TokenType.SLASH => do
+        match expectNumber lValue, expectNumber rValue with
+        | .ok l, .ok r => 
+          if r == 0 then
+            throw RuntimeError.divisionByZero
+          else
+            pure (Value.number (l / r))
+        | .error e, _ => throw e
+        | _, .error e => throw e
+      | TokenType.GREATER => do
+        match expectNumber lValue, expectNumber rValue with
+        | .ok l, .ok r => pure (Value.boolean (l > r))
+        | .error e, _ => throw e
+        | _, .error e => throw e
+      | TokenType.GREATER_EQUAL => do
+        match expectNumber lValue, expectNumber rValue with
+        | .ok l, .ok r => pure (Value.boolean (l >= r))
+        | .error e, _ => throw e
+        | _, .error e => throw e
+      | TokenType.LESS => do
+        match expectNumber lValue, expectNumber rValue with
+        | .ok l, .ok r => pure (Value.boolean (l < r))
+        | .error e, _ => throw e
+        | _, .error e => throw e
+      | TokenType.LESS_EQUAL => do
+        match expectNumber lValue, expectNumber rValue with
+        | .ok l, .ok r => pure (Value.boolean (l <= r))
+        | .error e, _ => throw e
+        | _, .error e => throw e
+      | TokenType.EQUAL_EQUAL =>
+        pure (Value.boolean (lValue == rValue))
+      | TokenType.BANG_EQUAL =>
+        pure (Value.boolean (lValue != rValue))
+      | _ => 
+        throw (RuntimeError.unknownOperator s!"Unknown binary operator: {op.type}")
+
+  partial def executeStmt (stmt: Stmt) : InterpreterM Unit := do
+    match stmt with
+    | Stmt.Expression expr => do
+      let _ ← evaluateExpr expr
+      pure ()
+      
+    | Stmt.Print expr => do
+      let value ← evaluateExpr expr
+      let state ← get
+      set { state with output := state.output ++ [toString value] }
+      
+    | Stmt.Var name initializer => do
+      let value ← match initializer with
+        | some init => evaluateExpr init
+        | none => pure Value.nil
+      let state ← get
+      let newEnv := state.env.define name.lexeme value
+      set { state with env := newEnv }
+      
+    | Stmt.Block stmts => do
+      let state ← get
+      let savedEnv := state.env
+      let newEnv := Environment.withEnclosing savedEnv
+      set { state with env := newEnv }
+      executeStmts stmts
+      -- Restore the previous environment
+      let state ← get
+      set { state with env := savedEnv }
+  
+  partial def executeStmts (stmts: List Stmt) : InterpreterM Unit := do
+    match stmts with
+    | [] => pure ()
+    | stmt :: rest => do
+      executeStmt stmt
+      executeStmts rest
+
+  partial def executeDecl (decl: Decl) : InterpreterM Unit := do
+    match decl with
+    | Decl.VarDecl name initializer => do
+      let value ← match initializer with
+        | some init => evaluateExpr init
+        | none => pure Value.nil
+      let state ← get
+      let newEnv := state.env.define name.lexeme value
+      set { state with env := newEnv }
+      
+    | Decl.Statement stmt =>
+      executeStmt stmt
+
+end
+
+def interpret (program: Program) : Except RuntimeError (List String) := do
+  let initialState : InterpreterState := 
+    { env := Environment.empty, output := [] }
+  
+  let rec runProgram (decls: List Decl) : InterpreterM Unit := do
+    match decls with
+    | [] => pure ()
+    | decl :: rest => do
+      executeDecl decl
+      runProgram rest
+  
+  match StateT.run (runProgram program) initialState with
+  | .ok ((), finalState) => .ok finalState.output
+  | .error e => .error e
 
 end LeanLox.Interpreter
